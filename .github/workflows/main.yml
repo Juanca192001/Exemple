@@ -1,0 +1,61 @@
+name: Daily Issue Tracker
+
+on:
+  schedule:
+    # Runs at 00:00 UTC every day
+    - cron: '0 0 * * *'
+
+jobs:
+  track-issues:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v2
+
+    - name: Setup Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install pdfkit
+
+    - name: Fetch Issues and Generate PDF
+      uses: actions/github-script@v3
+      with:
+        github-token: ${{secrets.GITHUB_TOKEN}}
+        script: |
+          const fs = require('fs');
+          const execSync = require('child_process').execSync;
+          const yesterday = new Date();
+          yesterday.setDate(yesterday.getDate() - 1);
+          const date = yesterday.toISOString().split('T')[0];
+          
+          const issuesOpened = await github.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            since: date,
+            state: 'open',
+          });
+          const issuesClosed = await github.issues.listForRepo({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            since: date,
+            state: 'closed',
+          });
+          
+          const checklistData = `Issues opened yesterday: ${issuesOpened.data.length}\nIssues closed yesterday: ${issuesClosed.data.length}`;
+          
+          // Write checklist data to a temporary file
+          fs.writeFileSync('checklist.txt', checklistData);
+          
+          // Call the Python script to generate the PDF
+          execSync('python generate_pdf.py < checklist.txt', { stdio: 'inherit' });
+
+    - name: Upload PDF
+      uses: actions/upload-artifact@v2
+      with:
+        name: checklist-pdf
+        path: checklist.pdf
